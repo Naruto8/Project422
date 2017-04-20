@@ -1,40 +1,83 @@
+/*BEGIN_LEGAL 
+Intel Open Source License 
+
+Copyright (c) 2002-2016 Intel Corporation. All rights reserved.
+ 
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+Redistributions of source code must retain the above copyright notice,
+this list of conditions and the following disclaimer.  Redistributions
+in binary form must reproduce the above copyright notice, this list of
+conditions and the following disclaimer in the documentation and/or
+other materials provided with the distribution.  Neither the name of
+the Intel Corporation nor the names of its contributors may be used to
+endorse or promote products derived from this software without
+specific prior written permission.
+ 
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE INTEL OR
+ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+END_LEGAL */
+//
+// @ORIGINAL_AUTHOR: Artur Klauser
+//
 
 /*! @file
- *  This is an example of the PIN tool that demonstrates some basic PIN APIs 
- *  and could serve as the starting point for developing your first PIN tool
+ *  This file contains an ISA-portable PIN tool for functional simulation of
+ *  instruction+data TLB+cache hieraries
  */
 
-#include "pin.H"
 #include <iostream>
+
+#include "pin.H"
 #include <fstream>
 
-/* ================================================================== */
-// Global variables 
-/* ================================================================== */
+//typedef UINT32 CACHE_STATS; // type of cache hit/miss counters
 
-UINT64 insCount = 0;        //number of dynamically executed instructions
-UINT64 bblCount = 0;        //number of dynamically executed basic blocks
-UINT64 threadCount = 0;     //total number of threads, including main thread
+#include "cache.H"
+
+using namespace std;
 
 std::ostream * out = &cerr;
 
-/* ===================================================================== */
-// Command line switches
-/* ===================================================================== */
+// --------------------------------------------------------------------------------
+// Declarations
+// --------------------------------------------------------------------------------
+static UINT32 hits = 0;         // L3 Cache hits
+static UINT32 misses = 0;       // L3 Cache misses
+
+// --------------------------------------------------------------------------------
+// Output Options
+//LOCALFUN VOID Fini(int code, VOID * v)
+//{
+    //std::cerr << itlb;
+    //std::cerr << dtlb;
+    //std::cerr << il1;
+    //std::cerr << dl1;
+    //std::cerr << ul2;
+    //std::cerr << ul3;
+//}
+// --------------------------------------------------------------------------------
+
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE,  "pintool",
     "o", "", "specify file name for MyPinTool output");
 
 KNOB<BOOL>   KnobCount(KNOB_MODE_WRITEONCE,  "pintool",
     "count", "1", "count instructions, basic blocks and threads in the application");
 
+KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", 
+    "f","0", "FastForward Instructions");
 
-/* ===================================================================== */
-// Utilities
-/* ===================================================================== */
-
-/*!
- *  Print out help message.
- */
 INT32 Usage()
 {
     cerr << "This tool prints out the number of dynamically executed " << endl <<
@@ -45,198 +88,240 @@ INT32 Usage()
     return -1;
 }
 
-/* ===================================================================== */
-// Analysis routines
-/* ===================================================================== */
-
-/*!
- * Increase counter of the executed basic blocks and instructions.
- * This function is called for every basic block when it is about to be executed.
- * @param[in]   numInstInBbl    number of instructions in the basic block
- * @note use atomic operations for multi-threaded applications
- */
-VOID CountBbl(UINT32 numInstInBbl)
+VOID output()
 {
-    bblCount++;
-    insCount += numInstInBbl;
+    *out <<  "=========== CS422: Project ====================" << endl;
+    *out <<  "===============================================" << endl;
+    *out <<  "CACHE FIFO Stats" << endl;
+    *out <<  "===============================================" << endl;
+    *out <<  "L3 CACHE hits: " << hits << endl;
+    *out <<  "L3 CACHE misses: " << misses << endl;
 }
 
-/* ===================================================================== */
-// Instrumentation callbacks
-/* ===================================================================== */
-
-/*!
- * Insert call to the CountBbl() analysis routine before every basic block 
- * of the trace.
- * This function is called every time a new trace is encountered.
- * @param[in]   trace    trace to be instrumented
- * @param[in]   v        value specified by the tool in the TRACE_AddInstrumentFunction
- *                       function call
- */
-VOID Trace(TRACE trace, VOID *v)
-{
-    // Visit every basic block in the trace
-    for (BBL bbl = TRACE_BblHead(trace); BBL_Valid(bbl); bbl = BBL_Next(bbl))
-    {
-        // Insert a call to CountBbl() before every basic bloc, passing the number of instructions
-        BBL_InsertCall(bbl, IPOINT_BEFORE, (AFUNPTR)CountBbl, IARG_UINT32, BBL_NumIns(bbl), IARG_END);
-    }
-}
-
-/*!
- * Increase counter of threads in the application.
- * This function is called for every thread created by the application when it is
- * about to start running (including the root thread).
- * @param[in]   threadIndex     ID assigned by PIN to the new thread
- * @param[in]   ctxt            initial register state for the new thread
- * @param[in]   flags           thread creation flags (OS specific)
- * @param[in]   v               value specified by the tool in the 
- *                              PIN_AddThreadStartFunction function call
- */
-VOID ThreadStart(THREADID threadIndex, CONTEXT *ctxt, INT32 flags, VOID *v)
-{
-    threadCount++;
-}
-
-/*!
- * Print out analysis results.
- * This function is called when the application exits.
- * @param[in]   code            exit code of the application
- * @param[in]   v               value specified by the tool in the 
- *                              PIN_AddFiniFunction function call
- */
 VOID Fini(INT32 code, VOID *v)
-{
+{    
     output();
 }
 
-/*!
- * The main procedure of the tool.
- * This function is called when the application image is loaded but not yet started.
- * @param[in]   argc            total number of elements in the argv array
- * @param[in]   argv            array of command line arguments, 
- *                              including pin -t <toolname> -- ...
- */
+// ----------------------------------------------------------------------------------------
+// Cache
+// A three-level cache hierarchy with L1 instruction cache being a 32 KB
+// 8-way 64-byte block size, LRU. L1 data cache is a 32 KB 8-way 64-byte block
+// size, LRU. L2 cache is a 256 KB 8-way 64-byte block size LRU. L3 cache is a 2
+// MB 16-way 64-byte block size. This project experiments with different L3 cache
+// replacement policies.
+// ----------------------------------------------------------------------------------------
 
-void output()
+namespace ITLB
 {
-    *out <<  "===============================================" << endl;
-    *out <<  "MyPinTool analysis results: " << endl;
-    *out <<  "Number of instructions: " << insCount  << endl;
-    *out <<  "Number of basic blocks: " << bblCount  << endl;
-    *out <<  "Number of threads: " << threadCount  << endl;
-    *out <<  "===============================================" << endl;
+    // instruction TLB: 4 kB pages, 32 entries, fully associative
+    const UINT32 lineSize = 4*KILO;
+    const UINT32 cacheSize = 32 * lineSize;
+    const UINT32 associativity = 32;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
+
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALFUN ITLB::CACHE itlb("ITLB", ITLB::cacheSize, ITLB::lineSize, ITLB::associativity);
 
-void FIFO_Policy()
+namespace DTLB
 {
+    // data TLB: 4 kB pages, 32 entries, fully associative
+    const UINT32 lineSize = 4*KILO;
+    const UINT32 cacheSize = 32 * lineSize;
+    const UINT32 associativity = 32;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
 
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALVAR DTLB::CACHE dtlb("DTLB", DTLB::cacheSize, DTLB::lineSize, DTLB::associativity);
 
-void LIFO_Policy()
+namespace IL1
 {
-    
+    // 1st level instruction cache: 32 kB, 64 B lines, 8-way associative
+    const UINT32 cacheSize = 32*KILO;
+    const UINT32 lineSize = 64;
+    const UINT32 associativity = 8;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_NO_ALLOCATE;
+
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALVAR IL1::CACHE il1("L1 Instruction Cache", IL1::cacheSize, IL1::lineSize, IL1::associativity);
 
-void LRU_Policy()
+namespace DL1
 {
+    // 1st level data cache: 32 kB, 64 B lines, 8-way associative
+    const UINT32 cacheSize = 32*KILO;
+    const UINT32 lineSize = 64;
+    const UINT32 associativity = 8;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_NO_ALLOCATE;
 
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALVAR DL1::CACHE dl1("L1 Data Cache", DL1::cacheSize, DL1::lineSize, DL1::associativity);
 
-void MRU_Policy()
+namespace UL2
 {
-    
+    // 2nd level unified cache: 256 KB, 64 B lines, 8-way associative
+    const UINT32 cacheSize = 256*KILO;
+    const UINT32 lineSize = 64;
+    const UINT32 associativity = 8;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
+
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALVAR UL2::CACHE ul2("L2 Unified Cache", UL2::cacheSize, UL2::lineSize, UL2::associativity);
 
-void RR_Policy()
+namespace UL3
 {
+    // 3rd level unified cache: 2 MB, 64 B lines, 16-way associative
+    const UINT32 cacheSize = 2*MEGA;
+    const UINT32 lineSize = 64;
+    const UINT32 associativity = 16;
+    const CACHE_ALLOC::STORE_ALLOCATION allocation = CACHE_ALLOC::STORE_ALLOCATE;
 
+    const UINT32 max_sets = cacheSize / (lineSize * associativity);
+    const UINT32 max_associativity = associativity;
+
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
 }
+LOCALVAR UL3::CACHE ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
 
-class CacheModel
+LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
 {
-    private:
-        UINT32 associativity;
-        UINT64 readReqs;
-        UINT64 writeReqs;
-        UINT64 readHits;
-        UINT64 writeHits;
-        UINT64 lastAccessed;
-    public:
-        CacheModel(){
-            
-        }
-}
+    // thir level unified cache
+    const BOOL ul3Hit = ul3.Access(addr, size, accessType);
 
-VOID CacheLoad(ADDRINT addrStart, int size, int type)
-{
-
-}
-
-VOID CacheStore(ADDRINT addrStart, int size, int type)
-{
-
-}
-
-//VOID CacheStore(int level, ADDRINT addr, int accessType)
-//{
-//
-//}
-
-VOID Instruction(INS ins, VOID *v)
-{
-    if (INS_IsMemoryRead(ins))
+    // no. of cache hits/misses
+    if ( ! ul3Hit)
     {
-        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) MemRef,
-                IARG_MEMORYREAD_EA, IARG_MEMORYREAD_SIZE, IARG_END);
+        misses++;
     }
-    if (INS_IsMemoryWrite(ins))
+    else
     {
-        INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) MemRef,
-                IARG_MEMORYWRITE_EA, IARG_MEMORYWRITE_SIZE, IARG_END);
+        hits++;
     }
 }
 
-int main(int argc, char *argv[])
+LOCALFUN VOID Ul2Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
 {
-    // Initialize PIN library. Print help message if -h(elp) is specified
-    // in the command line or the command line is invalid 
+    // second level unified cache
+    const BOOL ul2Hit = ul2.Access(addr, size, accessType);
+
+    // third level unified cache
+    if ( ! ul2Hit) Ul3Access(addr, size, accessType);
+}
+
+LOCALFUN VOID InsRef(ADDRINT addr)
+{
+    const UINT32 size = 1; // assuming access does not cross cache lines
+    const CACHE_BASE::ACCESS_TYPE accessType = CACHE_BASE::ACCESS_TYPE_LOAD;
+
+    // ITLB
+    itlb.AccessSingleLine(addr, accessType);
+
+    // first level I-cache
+    const BOOL il1Hit = il1.AccessSingleLine(addr, accessType);
+
+    // second level unified Cache
+    if ( ! il1Hit) Ul2Access(addr, size, accessType);
+}
+
+LOCALFUN VOID MemRefMulti(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+{
+    // DTLB
+    dtlb.AccessSingleLine(addr, CACHE_BASE::ACCESS_TYPE_LOAD);
+
+    // first level D-cache
+    const BOOL dl1Hit = dl1.Access(addr, size, accessType);
+
+    // second level unified Cache
+    if ( ! dl1Hit) Ul2Access(addr, size, accessType);
+}
+
+LOCALFUN VOID MemRefSingle(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+{
+    // DTLB
+    dtlb.AccessSingleLine(addr, CACHE_BASE::ACCESS_TYPE_LOAD);
+
+    // first level D-cache
+    const BOOL dl1Hit = dl1.AccessSingleLine(addr, accessType);
+
+    // second level unified Cache
+    if ( ! dl1Hit) Ul2Access(addr, size, accessType);
+}
+
+LOCALFUN VOID Instruction(INS ins, VOID *v)
+{
+    // all instruction fetches access I-cache
+    INS_InsertCall(
+        ins, IPOINT_BEFORE, (AFUNPTR)InsRef,
+        IARG_INST_PTR,
+        IARG_END);
+
+    if (INS_IsMemoryRead(ins) && INS_IsStandardMemop(ins))
+    {
+        const UINT32 size = INS_MemoryReadSize(ins);
+        const AFUNPTR countFun = (size <= 4 ? (AFUNPTR) MemRefSingle : (AFUNPTR) MemRefMulti);
+
+        // only predicated-on memory instructions access D-cache
+        INS_InsertPredicatedCall(
+            ins, IPOINT_BEFORE, countFun,
+            IARG_MEMORYREAD_EA,
+            IARG_MEMORYREAD_SIZE,
+            IARG_UINT32, CACHE_BASE::ACCESS_TYPE_LOAD,
+            IARG_END);
+    }
+
+    if (INS_IsMemoryWrite(ins) && INS_IsStandardMemop(ins))
+    {
+        const UINT32 size = INS_MemoryWriteSize(ins);
+        const AFUNPTR countFun = (size <= 4 ? (AFUNPTR) MemRefSingle : (AFUNPTR) MemRefMulti);
+
+        // only predicated-on memory instructions access D-cache
+        INS_InsertPredicatedCall(
+            ins, IPOINT_BEFORE, countFun,
+            IARG_MEMORYWRITE_EA,
+            IARG_MEMORYWRITE_SIZE,
+            IARG_UINT32, CACHE_BASE::ACCESS_TYPE_STORE,
+            IARG_END);
+    }
+}
+
+GLOBALFUN int main(int argc, char *argv[])
+{
     if( PIN_Init(argc,argv) )
     {
         return Usage();
     }
-    
-    string fileName = KnobOutputFile.Value();
 
-    if (!fileName.empty()) { out = new std::ofstream(fileName.c_str());}
+    string fileName = KnobOutputFile.Value();
+    if (!fileName.empty()) { 
+        out = new std::ofstream(fileName.c_str());
+    }
 
     if (KnobCount)
     {
-        INS_AddInstrumentFunction(Instructions, 0);
-        // Register function to be called to instrument traces
-        //TRACE_AddInstrumentFunction(Trace, 0);
-
-        // Register function to be called for every thread before it starts running
-        //PIN_AddThreadStartFunction(ThreadStart, 0);
-
-        // Register function to be called when the application exits
+        INS_AddInstrumentFunction(Instruction, 0);
         PIN_AddFiniFunction(Fini, 0);
     }
-    
-    cerr <<  "===============================================" << endl;
-    cerr <<  "This application is instrumented by MyPinTool" << endl;
-    if (!KnobOutputFile.Value().empty()) 
-    {
-        cerr << "See file " << KnobOutputFile.Value() << " for analysis results" << endl;
-    }
-    cerr <<  "===============================================" << endl;
-
-    // Start the program, never returns
+    // Never returns
     PIN_StartProgram();
-    
-    return 0;
-}
 
-/* ===================================================================== */
-/* eof */
-/* ===================================================================== */
+    return 0; // make compiler happy
+}
