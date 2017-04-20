@@ -158,7 +158,7 @@ class ROUND_ROBIN
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
         _nextReplaceIndex = _tagsFirstIndex;
 
-        for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
             _tags[index] = CACHE_TAG(0);
         }
@@ -176,7 +176,7 @@ class ROUND_ROBIN
     {
         bool result = true;
 
-        for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
             // this is an ugly micro-optimization, but it does cause a
             // tighter assembly loop for ARM that way ...
@@ -218,7 +218,7 @@ class LRU_POLICY
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
         _nextReplaceIndex = _tagsFirstIndex;
 
-        for (INT32 index = _tagsFirstIndex; index < _tagsLastIndex; index++)
+        for (UINT32 index = _tagsFirstIndex; index < _tagsLastIndex; index++)
         {
             counter[index] = _tagsLastIndex;
         }
@@ -228,7 +228,7 @@ class LRU_POLICY
     {
         bool result = false;
 
-        for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
             // this is an ugly micro-optimization, but it does cause a
             // tighter assembly loop for ARM that way ...
@@ -261,7 +261,7 @@ class LRU_POLICY
     VOID Replace(CACHE_TAG tag)
     {
         // Find the least recently used index that is to be replaced
-        for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
             if (counter[index] > counter[_nextReplaceIndex]) _nextReplaceIndex = index;
         }
@@ -331,7 +331,7 @@ class SRRIP
         // Find the srrip index that is to be replaced
         while (!found)
         {
-            for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+            for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
             {
                 if (predictor[index] == distantIndex)
                 {
@@ -341,7 +341,7 @@ class SRRIP
             }
             if (!found)
             {
-                for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+                for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
                 {
                   predictor[index]++;
                 }

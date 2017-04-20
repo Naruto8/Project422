@@ -55,6 +55,9 @@ std::ostream * out = &cerr;
 // --------------------------------------------------------------------------------
 static UINT32 hits = 0;         // L3 Cache hits
 static UINT32 misses = 0;       // L3 Cache misses
+UINT64 fast_forward_count = 0;     //fast forward count
+UINT64 noOfinsToexcute = 1000;
+UINT64 icount = 0;                    //number of dynamically executed instructions
 
 // --------------------------------------------------------------------------------
 // Output Options
@@ -92,17 +95,35 @@ VOID output()
 {
     *out <<  "=========== CS422: Project ====================" << endl;
     *out <<  "===============================================" << endl;
-    *out <<  "CACHE FIFO Stats" << endl;
+    *out <<  "CACHE Stats" << endl;
     *out <<  "===============================================" << endl;
+    *out <<  "Instructions executed: " << icount << endl;
+    *out <<  "FastForward: " << fast_forward_count << endl;
+    *out <<  "No of ins to Excute: " << noOfinsToexcute << endl;
     *out <<  "L3 CACHE hits: " << hits << endl;
     *out <<  "L3 CACHE misses: " << misses << endl;
 }
-
+void MyExitRoutine() {
+    output();
+    exit(0);
+}
 VOID Fini(INT32 code, VOID *v)
 {    
     output();
 }
+ADDRINT FastForward(void) {
+    //return (icount >= fast_forward_count && icount < fast_forward_count + 1000000000);
+     return (icount >= fast_forward_count);
+}
+ADDRINT Terminate(void)
+{
+    // return (icount >= fast_forward_count + 1000000000);
+     return (icount >= fast_forward_count + noOfinsToexcute);
+}
 
+VOID ins_count(){
+    icount++;
+}
 // ----------------------------------------------------------------------------------------
 // Cache
 // A three-level cache hierarchy with L1 instruction cache being a 32 KB
@@ -123,9 +144,9 @@ namespace ITLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALFUN ITLB::CACHE itlb("ITLB", ITLB::cacheSize, ITLB::lineSize, ITLB::associativity);
 
@@ -140,9 +161,9 @@ namespace DTLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR DTLB::CACHE dtlb("DTLB", DTLB::cacheSize, DTLB::lineSize, DTLB::associativity);
 
@@ -157,9 +178,9 @@ namespace IL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR IL1::CACHE il1("L1 Instruction Cache", IL1::cacheSize, IL1::lineSize, IL1::associativity);
 
@@ -174,7 +195,7 @@ namespace DL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    // typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
     typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
@@ -191,9 +212,9 @@ namespace UL2
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR UL2::CACHE ul2("L2 Unified Cache", UL2::cacheSize, UL2::lineSize, UL2::associativity);
 
@@ -281,7 +302,12 @@ LOCALFUN VOID MemRefSingle(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE ac
 LOCALFUN VOID Instruction(INS ins, VOID *v)
 {
     // all instruction fetches access I-cache
-    INS_InsertCall(
+    INS_InsertIfCall(ins, IPOINT_BEFORE, (AFUNPTR) Terminate, IARG_END);
+    INS_InsertThenCall(ins, IPOINT_BEFORE,(AFUNPTR) MyExitRoutine, IARG_END);
+    INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)ins_count, IARG_END);
+
+    INS_InsertIfCall(ins, IPOINT_BEFORE, (AFUNPTR)FastForward, IARG_END);
+    INS_InsertThenCall(
         ins, IPOINT_BEFORE, (AFUNPTR)InsRef,
         IARG_INST_PTR,
         IARG_END);
@@ -292,7 +318,8 @@ LOCALFUN VOID Instruction(INS ins, VOID *v)
         const AFUNPTR countFun = (size <= 4 ? (AFUNPTR) MemRefSingle : (AFUNPTR) MemRefMulti);
 
         // only predicated-on memory instructions access D-cache
-        INS_InsertPredicatedCall(
+        INS_InsertIfCall(ins, IPOINT_BEFORE, (AFUNPTR)FastForward, IARG_END);
+        INS_InsertThenPredicatedCall(
             ins, IPOINT_BEFORE, countFun,
             IARG_MEMORYREAD_EA,
             IARG_MEMORYREAD_SIZE,
@@ -306,7 +333,8 @@ LOCALFUN VOID Instruction(INS ins, VOID *v)
         const AFUNPTR countFun = (size <= 4 ? (AFUNPTR) MemRefSingle : (AFUNPTR) MemRefMulti);
 
         // only predicated-on memory instructions access D-cache
-        INS_InsertPredicatedCall(
+        INS_InsertIfCall(ins, IPOINT_BEFORE, (AFUNPTR)FastForward, IARG_END);
+        INS_InsertThenPredicatedCall(
             ins, IPOINT_BEFORE, countFun,
             IARG_MEMORYWRITE_EA,
             IARG_MEMORYWRITE_SIZE,
