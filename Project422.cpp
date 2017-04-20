@@ -123,7 +123,9 @@ namespace ITLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALFUN ITLB::CACHE itlb("ITLB", ITLB::cacheSize, ITLB::lineSize, ITLB::associativity);
 
@@ -138,7 +140,9 @@ namespace DTLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR DTLB::CACHE dtlb("DTLB", DTLB::cacheSize, DTLB::lineSize, DTLB::associativity);
 
@@ -153,7 +157,9 @@ namespace IL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR IL1::CACHE il1("L1 Instruction Cache", IL1::cacheSize, IL1::lineSize, IL1::associativity);
 
@@ -168,7 +174,9 @@ namespace DL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR DL1::CACHE dl1("L1 Data Cache", DL1::cacheSize, DL1::lineSize, DL1::associativity);
 
@@ -183,7 +191,9 @@ namespace UL2
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR UL2::CACHE ul2("L2 Unified Cache", UL2::cacheSize, UL2::lineSize, UL2::associativity);
 
@@ -198,7 +208,9 @@ namespace UL3
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 3;
+    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR UL3::CACHE ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
 

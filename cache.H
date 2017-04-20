@@ -167,7 +167,7 @@ class ROUND_ROBIN
     VOID SetAssociativity(UINT32 associativity)
     {
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
-        _tagsLastIndex = associativity;
+        _tagsLastIndex = associativity - 1;
         _nextReplaceIndex = _tagsFirstIndex;
     }
     UINT32 GetAssociativity(UINT32 associativity) { return _tagsLastIndex + 1; }
@@ -251,7 +251,7 @@ class LRU_POLICY
     VOID SetAssociativity(UINT32 associativity)
     {
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
-        _tagsLastIndex = associativity;
+        _tagsLastIndex = associativity - 1;
         _nextReplaceIndex = _tagsFirstIndex;
     }
 
@@ -277,32 +277,89 @@ class LRU_POLICY
 //-------------------------------------------------------------------------------------------
 // Cache with SRRIP
 //-------------------------------------------------------------------------------------------
-template <UINT32 MAX_ASSOCIATIVITY = 4>
+template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 3>
 class SRRIP
 {
   private:
-      CACHE_TAG _tag[MAX_ASSOCIATIVITY];
-      UINT32 _tagsFirstIndex;
-      UINT32 _tagsLastIndex;
-      UINT32 _nextReplaceIndex;
+    CACHE_TAG _tags[MAX_ASSOCIATIVITY];
+    UINT32 _tagsFirstIndex;
+    UINT32 _tagsLastIndex;
+    UINT32 _nextReplaceIndex;
+    UINT32 predictor[MAX_ASSOCIATIVITY];
 
   public:
-      SRRIP(UINT32 associativity = MAX_ASSOCIATIVITY)
-          : _tagsFirstIndex(0), _tagsLastIndex(associativity - 1)
-      {
-          ASSERTX(associativity <= MAX_ASSOCIATIVITY);
-      }
+    SRRIP(UINT32 associativity = MAX_ASSOCIATIVITY)
+        : _tagsFirstIndex(0), _tagsLastIndex(associativity - 1)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            predictor[index] = INTERVAL;
+        }
+    }
 
-      UINT32 Find(CACHE_TAG tag)
-      {
-          
-      }
+    UINT32 Find(CACHE_TAG tag)
+    {
+        bool result = false;
 
-      VOID Replace(CACHE_TAG tag)
-      {
-          
-      }
-}
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (_tags[index] == tag)
+            {
+                result = true;
+                predictor[index] = 0;
+            }
+        }
+
+        return result;
+    }
+
+    VOID SetAssociativity(UINT32 associativity)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        _tagsLastIndex = associativity - 1;
+    }
+
+    UINT32 GetAssociativity(UINT32 associativity) { return _tagsLastIndex + 1; }
+    
+    VOID Replace(CACHE_TAG tag)
+    {
+        UINT32 distantIndex = 3;
+        bool found = false;
+        _nextReplaceIndex = _tagsFirstIndex;
+        // Find the srrip index that is to be replaced
+        while (!found)
+        {
+            for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+            {
+                if (predictor[index] == distantIndex)
+                {
+                    _nextReplaceIndex = index;
+                    found = true;
+                }
+            }
+            if (!found)
+            {
+                for (INT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+                {
+                  predictor[index]++;
+                }
+            }
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (index != _nextReplaceIndex)
+            {
+                predictor[index]++;
+            }
+        }
+        // g++ -O3 too dumb to do CSE on following lines?!
+        const UINT32 index = _nextReplaceIndex;
+        _tags[index] = tag;
+        predictor[index] = 2;
+    }
+};
 
 } // namespace CACHE_SET
 
@@ -570,5 +627,6 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
 #define CACHE_DIRECT_MAPPED(MAX_SETS, ALLOCATION) CACHE<CACHE_SET::DIRECT_MAPPED, MAX_SETS, ALLOCATION>
 #define CACHE_ROUND_ROBIN(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::ROUND_ROBIN<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
 #define CACHE_LRU_POLICY(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::LRU_POLICY<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
+#define CACHE_SRRIP(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE<CACHE_SET::SRRIP<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
 
 #endif // PIN_CACHE_H
