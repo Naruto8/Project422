@@ -200,15 +200,16 @@ namespace UL3
     // typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     // typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 15;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    typedef CACHE_ship(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR UL3::CACHE ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
 
 
-LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // thir level unified cache
-    const BOOL ul3Hit = ul3.Access(addr, size, accessType);
+    const BOOL ul3Hit = ul3.Access(addr, size, pc,accessType);
     // no. of cache hits/misses
     acc++;  
     if ( ! ul3Hit)
@@ -220,14 +221,28 @@ LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE acces
         hits++;
     }
 }
-
-LOCALFUN VOID Ul2Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+// LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+// {
+//     // thir level unified cache
+//     const BOOL ul3Hit = ul3.Access(addr, size,accessType);
+//     // no. of cache hits/misses
+//     acc++;  
+//     if ( ! ul3Hit)
+//     {
+//         misses++;
+//     }
+//     else
+//     {
+//         hits++;
+//     }
+// }
+LOCALFUN VOID Ul2Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // second level unified cache
     const BOOL ul2Hit = ul2.Access(addr, size, accessType);
     // third level unified cache
     if ( ! ul2Hit) {
-        Ul3Access(addr, size, accessType);
+        Ul3Access(addr, size, pc,accessType);
     }
 }
 
@@ -244,11 +259,11 @@ LOCALFUN VOID InsRef(ADDRINT addr)
 
     // second level unified Cache
     if ( ! il1Hit){
-         Ul2Access(addr, size, accessType);
+         Ul2Access(addr, size,addr, accessType);
     }
 }
 
-LOCALFUN VOID MemRefMulti(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+LOCALFUN VOID MemRefMulti(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // DTLB
     dtlb.AccessSingleLine(addr, accessType);
@@ -258,11 +273,11 @@ LOCALFUN VOID MemRefMulti(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE acc
 
     // second level unified Cache
     if ( ! dl1Hit){
-        Ul2Access(addr, size, accessType);
+        Ul2Access(addr, size, pc,accessType);
     }
 }
 
-LOCALFUN VOID MemRefSingle(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
+LOCALFUN VOID MemRefSingle(ADDRINT addr, UINT32 size, ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // DTLB
     dtlb.AccessSingleLine(addr, accessType);
@@ -272,7 +287,7 @@ LOCALFUN VOID MemRefSingle(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE ac
 
     // second level unified Cache
     if ( ! dl1Hit) { 
-        Ul2Access(addr, size, accessType);
+        Ul2Access(addr, size,pc, accessType);
     }
     
 }
@@ -301,6 +316,7 @@ LOCALFUN VOID Instruction(INS ins, VOID *v)
             ins, IPOINT_BEFORE, countFun,
             IARG_MEMORYREAD_EA,
             IARG_MEMORYREAD_SIZE,
+            IARG_INST_PTR, 
             IARG_UINT32, CACHE_BASE::ACCESS_TYPE_LOAD,
             IARG_END);
     }
@@ -316,6 +332,7 @@ LOCALFUN VOID Instruction(INS ins, VOID *v)
             ins, IPOINT_BEFORE, countFun,
             IARG_MEMORYWRITE_EA,
             IARG_MEMORYWRITE_SIZE,
+            IARG_INST_PTR, 
             IARG_UINT32, CACHE_BASE::ACCESS_TYPE_STORE,
             IARG_END);
     }

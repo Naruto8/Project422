@@ -48,6 +48,8 @@ typedef UINT64 CACHE_STATS; // type of cache hit/miss counters
 
 #include <sstream>
 #include <iostream>
+UINT32 SHCT[5000];
+
 
 /*! RMR (rodric@gmail.com) 
  *   - temporary work around because decstr()
@@ -367,6 +369,112 @@ class SRRIP
     }
 };
 
+
+template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 15>
+class ship
+{
+  private:
+    CACHE_TAG _tags[MAX_ASSOCIATIVITY];
+    UINT32 signature[MAX_ASSOCIATIVITY];
+    bool outcome[MAX_ASSOCIATIVITY];
+    UINT32 _tagsFirstIndex;
+    UINT32 _tagsLastIndex;
+    UINT32 _nextReplaceIndex;
+    UINT32 predictor[MAX_ASSOCIATIVITY];
+
+  public:
+    ship(UINT32 associativity = MAX_ASSOCIATIVITY)
+        : _tagsFirstIndex(0), _tagsLastIndex(associativity - 1)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            predictor[index] = INTERVAL;
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            _tags[index] = CACHE_TAG(0);
+            signature[index] = 0;
+            outcome[index] = false;
+        }
+    }
+
+    UINT32 Find(CACHE_TAG tag,ADDRINT pc)
+    {
+        bool result = false;
+
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (_tags[index] == tag)
+            {
+                result = true;
+                predictor[index] = 0;
+                outcome[index] = true;
+                SHCT[signature[index]]++;
+            }
+        }
+
+        return result;
+    }
+
+    VOID SetAssociativity(UINT32 associativity)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        _tagsLastIndex = associativity - 1;
+    }
+
+    UINT32 GetAssociativity(UINT32 associativity) { return _tagsLastIndex + 1; }
+    
+    VOID Replace(CACHE_TAG tag,ADDRINT pc)
+    {
+        UINT32 distantIndex = INTERVAL;
+        bool found = false;
+        _nextReplaceIndex = _tagsFirstIndex;
+        while (!found)
+        {
+            for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+            {
+                if (predictor[index] == distantIndex)
+                {
+                    _nextReplaceIndex = index;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+                {
+                  predictor[index]++;
+                }
+            }
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (index != _nextReplaceIndex && predictor[index] < distantIndex)
+            {
+                predictor[index]++;
+            }
+        }
+        const UINT32 index = _nextReplaceIndex;
+        if (outcome[index] == false){
+            SHCT[signature[index]]--;
+        }
+        outcome[index] = false;
+        signature[index] = pc%5000;
+        UINT32 temp;
+        if(SHCT[signature[index]] == 0){
+            temp = (3*INTERVAL)/4;
+        }
+        else{
+            temp = (INTERVAL/4);
+        }
+        _tags[index] = tag;
+        predictor[index] = temp;
+    }
+};
+
 } // namespace CACHE_SET
 
 namespace CACHE_ALLOC
@@ -629,10 +737,104 @@ bool CACHE<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr, ACCESS
     return hit;
 }
 
+
+
+template <class SET, UINT32 MAX_SETS, UINT32 STORE_ALLOCATION>
+class CACHE_SHiP : public CACHE_BASE
+{
+  private:
+    SET _sets[MAX_SETS];
+
+  public:
+    // constructors/destructors
+    CACHE_SHiP(std::string name, UINT32 cacheSize, UINT32 lineSize, UINT32 associativity)
+      : CACHE_BASE(name, cacheSize, lineSize, associativity)
+    {
+        ASSERTX(NumSets() <= MAX_SETS);
+
+        for (UINT32 i = 0; i < NumSets(); i++)
+        {
+            _sets[i].SetAssociativity(associativity);
+        }
+    }
+
+    // modifiers
+    /// Cache access from addr to addr+size-1
+    bool Access(ADDRINT addr, UINT32 size,ADDRINT pc, ACCESS_TYPE accessType);
+    /// Cache access at addr that does not span cache lines
+    bool AccessSingleLine(ADDRINT addr,ADDRINT pc, ACCESS_TYPE accessType);
+};
+
+/*!
+ *  @return true if all accessed cache lines hit
+ */
+
+template <class SET, UINT32 MAX_SETS, UINT32 STORE_ALLOCATION>
+bool CACHE_SHiP<SET,MAX_SETS,STORE_ALLOCATION>::Access(ADDRINT addr, UINT32 size, ADDRINT pc,ACCESS_TYPE accessType)
+{
+    const ADDRINT highAddr = addr + size;
+    bool allHit = true;
+
+    const ADDRINT lineSize = LineSize();
+    const ADDRINT notLineMask = ~(lineSize - 1);
+    do
+    {
+        CACHE_TAG tag;
+        UINT32 setIndex;
+
+        SplitAddress(addr, tag, setIndex);
+
+        SET & set = _sets[setIndex];
+
+        bool localHit = set.Find(tag,pc);
+        allHit &= localHit;
+
+        // on miss, loads always allocate, stores optionally
+        if ( (! localHit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
+        {
+            set.Replace(tag,pc);
+        }
+
+        addr = (addr & notLineMask) + lineSize; // start of next cache line
+    }
+    while (addr < highAddr);
+
+    _access[accessType][allHit]++;
+
+    return allHit;
+}
+
+/*!
+ *  @return true if accessed cache line hits
+ */
+template <class SET, UINT32 MAX_SETS, UINT32 STORE_ALLOCATION>
+bool CACHE_SHiP<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr,ADDRINT pc, ACCESS_TYPE accessType)
+{
+    CACHE_TAG tag;
+    UINT32 setIndex;
+
+    SplitAddress(addr, tag, setIndex);
+
+    SET & set = _sets[setIndex];
+
+    bool hit = set.Find(tag,pc);
+
+    // on miss, loads always allocate, stores optionally
+    if ( (! hit) && (accessType == ACCESS_TYPE_LOAD || STORE_ALLOCATION == CACHE_ALLOC::STORE_ALLOCATE))
+    {
+        set.Replace(tag,pc);
+    }
+
+    _access[accessType][hit]++;
+
+    return hit;
+}
+
 // define shortcuts
 #define CACHE_DIRECT_MAPPED(MAX_SETS, ALLOCATION) CACHE<CACHE_SET::DIRECT_MAPPED, MAX_SETS, ALLOCATION>
 #define CACHE_ROUND_ROBIN(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::ROUND_ROBIN<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
 #define CACHE_LRU_POLICY(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::LRU_POLICY<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
 #define CACHE_SRRIP(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE<CACHE_SET::SRRIP<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
+#define CACHE_ship(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE_SHiP<CACHE_SET::ship<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
 
 #endif // PIN_CACHE_H
