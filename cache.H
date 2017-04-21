@@ -278,10 +278,10 @@ class LRU_POLICY
 };
 
 //-------------------------------------------------------------------------------------------
-// Cache with SRRIP
+// Cache with SRRIP_HP_HP
 //-------------------------------------------------------------------------------------------
 template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 15>
-class SRRIP
+class SRRIP_HP
 {
   private:
     CACHE_TAG _tags[MAX_ASSOCIATIVITY];
@@ -291,7 +291,7 @@ class SRRIP
     UINT32 predictor[MAX_ASSOCIATIVITY];
 
   public:
-    SRRIP(UINT32 associativity = MAX_ASSOCIATIVITY)
+    SRRIP_HP(UINT32 associativity = MAX_ASSOCIATIVITY)
         : _tagsFirstIndex(0), _tagsLastIndex(associativity - 1)
     {
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
@@ -335,7 +335,96 @@ class SRRIP
         UINT32 distantIndex = INTERVAL;
         bool found = false;
         _nextReplaceIndex = _tagsFirstIndex;
-        // Find the srrip index that is to be replaced
+        // Find the SRRIP_HP index that is to be replaced
+        while (!found)
+        {
+            for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+            {
+                if (predictor[index] == distantIndex)
+                {
+                    _nextReplaceIndex = index;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+                {
+                  predictor[index]++;
+                }
+            }
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (index != _nextReplaceIndex && predictor[index] < distantIndex)
+            {
+                predictor[index]++;
+            }
+        }
+        // g++ -O3 too dumb to do CSE on following lines?!
+        const UINT32 index = _nextReplaceIndex;
+        _tags[index] = tag;
+        predictor[index] = (INTERVAL+1)/2;
+    }
+};
+
+template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 15>
+class SRRIP_FP
+{
+  private:
+    CACHE_TAG _tags[MAX_ASSOCIATIVITY];
+    UINT32 _tagsFirstIndex;
+    UINT32 _tagsLastIndex;
+    UINT32 _nextReplaceIndex;
+    UINT32 predictor[MAX_ASSOCIATIVITY];
+
+  public:
+    SRRIP_FP(UINT32 associativity = MAX_ASSOCIATIVITY)
+        : _tagsFirstIndex(0), _tagsLastIndex(associativity - 1)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            predictor[index] = INTERVAL;
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            _tags[index] = CACHE_TAG(0);
+        }
+    }
+
+    UINT32 Find(CACHE_TAG tag)
+    {
+        bool result = false;
+
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            if (_tags[index] == tag)
+            {
+                result = true;
+                predictor[index] = (predictor[index]/2);
+            }
+        }
+
+        return result;
+    }
+
+    VOID SetAssociativity(UINT32 associativity)
+    {
+        ASSERTX(associativity <= MAX_ASSOCIATIVITY);
+        _tagsLastIndex = associativity - 1;
+    }
+
+    UINT32 GetAssociativity(UINT32 associativity) { return _tagsLastIndex + 1; }
+    
+    VOID Replace(CACHE_TAG tag)
+    {
+        UINT32 distantIndex = INTERVAL;
+        bool found = false;
+        _nextReplaceIndex = _tagsFirstIndex;
+        // Find the SRRIP_FP index that is to be replaced
         while (!found)
         {
             for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
@@ -834,7 +923,8 @@ bool CACHE_SHiP<SET,MAX_SETS,STORE_ALLOCATION>::AccessSingleLine(ADDRINT addr,AD
 #define CACHE_DIRECT_MAPPED(MAX_SETS, ALLOCATION) CACHE<CACHE_SET::DIRECT_MAPPED, MAX_SETS, ALLOCATION>
 #define CACHE_ROUND_ROBIN(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::ROUND_ROBIN<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
 #define CACHE_LRU_POLICY(MAX_SETS, MAX_ASSOCIATIVITY, ALLOCATION) CACHE<CACHE_SET::LRU_POLICY<MAX_ASSOCIATIVITY>, MAX_SETS, ALLOCATION>
-#define CACHE_SRRIP(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE<CACHE_SET::SRRIP<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
+#define CACHE_SRRIP_HP(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE<CACHE_SET::SRRIP_HP<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
+#define CACHE_SRRIP_FP(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE<CACHE_SET::SRRIP_HP<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
 #define CACHE_ship(MAX_SETS, MAX_ASSOCIATIVITY, INTERVAL, ALLOCATION) CACHE_SHiP<CACHE_SET::ship<MAX_ASSOCIATIVITY, INTERVAL>, MAX_SETS, ALLOCATION>
 
 #endif // PIN_CACHE_H

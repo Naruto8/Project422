@@ -16,15 +16,12 @@ std::ostream * out = &cerr;
 // --------------------------------------------------------------------------------
 static UINT32 hits = 0;         // L3 Cache hits
 static UINT32 misses = 0;       // L3 Cache misses
-// static UINT32 hits1 = 0;         // L3 Cache hits
-// static UINT32 misses1 = 0;       // L3 Cache misses
 static UINT32 acc = 0;       // L3 Cache misses
-// static UINT32 acc1 = 0;       // L3 Cache misses
 
-UINT64 fast_forward_count = 0;//377000000000;     //fast forward count
+UINT64 fast_forward_count = 0;  //fast forward count
 UINT64 noOfinsToexcute = 1000000000;
 UINT64 icount = 0;                    //number of dynamically executed instructions
-
+// UINT64 replacement = 0;
 // --------------------------------------------------------------------------------
 // Output Options
 //LOCALFUN VOID Fini(int code, VOID * v)
@@ -41,11 +38,8 @@ UINT64 icount = 0;                    //number of dynamically executed instructi
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE,  "pintool",
     "o", "", "specify file name for MyPinTool output");
 
-KNOB<BOOL>   KnobCount(KNOB_MODE_WRITEONCE,  "pintool",
-    "count", "1", "count instructions, basic blocks and threads in the application");
-
-KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", 
-    "f","0", "FastForward Instructions");
+KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "number of instructions to fast forward in billions");
+// KNOB<UINT64> KnobReplacement(KNOB_MODE_WRITEONCE, "pintool", "s", "0", "replacement policy to use for LLC");
 
 INT32 Usage()
 {
@@ -61,11 +55,23 @@ VOID output()
 {
     *out <<  "=========== CS422: Project ====================" << endl;
     *out <<  "===============================================" << endl;
-    *out <<  "CACHE Stats" << endl;
+    *out <<  "                  CACHE Stats" << endl;
     *out <<  "===============================================" << endl;
     *out <<  "Instructions executed: " << icount << endl;
     *out <<  "FastForward: " << fast_forward_count << endl;
     *out <<  "No of ins to Excute: " << noOfinsToexcute << endl;
+    // if (replacement == 0){
+    // *out <<  "================= Round Robin =================" << endl;
+    // }
+    // else if (replacement == 1){
+    // *out <<  "==================== LRU ======================" << endl;
+    // }
+    // else if (replacement == 2){
+    // *out <<  "=================== SRRiP =====================" << endl;
+    // }
+    // else if (replacement == 3){
+    // *out <<  "=================== SHiP ======================" << endl;
+    // }
     *out <<  "CACHE Accesses: " << acc << endl;
     *out <<  "L3 CACHE hits: " << hits << endl;
     *out <<  "L3 CACHE misses: " << misses << endl;
@@ -197,19 +203,21 @@ namespace UL3
 
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
-    // typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
-    // typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 15;
-    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
-    typedef CACHE_ship(max_sets, max_associativity, interval, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE0;
+    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE1;
+    typedef CACHE_SRRIP_HP(max_sets, max_associativity, interval, allocation) CACHE2;
+    typedef CACHE_SRRIP_FP(max_sets, max_associativity, interval, allocation) CACHE3;
+    typedef CACHE_ship(max_sets, max_associativity, interval, allocation) CACHE4;
 }
-LOCALVAR UL3::CACHE ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
-
+LOCALVAR UL3::CACHE3 ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
 
 LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // thir level unified cache
-    const BOOL ul3Hit = ul3.Access(addr, size, pc,accessType);
+    BOOL ul3Hit = FALSE;
+    ul3Hit = ul3.Access(addr, size,accessType);
+    // ul3Hit = ul3.Access(addr, size,pc,accessType);
     // no. of cache hits/misses
     acc++;  
     if ( ! ul3Hit)
@@ -221,21 +229,6 @@ LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS
         hits++;
     }
 }
-// LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size, CACHE_BASE::ACCESS_TYPE accessType)
-// {
-//     // thir level unified cache
-//     const BOOL ul3Hit = ul3.Access(addr, size,accessType);
-//     // no. of cache hits/misses
-//     acc++;  
-//     if ( ! ul3Hit)
-//     {
-//         misses++;
-//     }
-//     else
-//     {
-//         hits++;
-//     }
-// }
 LOCALFUN VOID Ul2Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS_TYPE accessType)
 {
     // second level unified cache
@@ -344,17 +337,14 @@ GLOBALFUN int main(int argc, char *argv[])
     {
         return Usage();
     }
-
+    fast_forward_count = KnobFastForward.Value();
     string fileName = KnobOutputFile.Value();
     if (!fileName.empty()) { 
         out = new std::ofstream(fileName.c_str());
     }
 
-    if (KnobCount)
-    {
-        INS_AddInstrumentFunction(Instruction, 0);
-        PIN_AddFiniFunction(Fini, 0);
-    }
+    INS_AddInstrumentFunction(Instruction, 0);
+    PIN_AddFiniFunction(Fini, 0);
     // Never returns
     PIN_StartProgram();
 
