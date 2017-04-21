@@ -1,42 +1,3 @@
-/*BEGIN_LEGAL 
-Intel Open Source License 
-
-Copyright (c) 2002-2016 Intel Corporation. All rights reserved.
- 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-Redistributions of source code must retain the above copyright notice,
-this list of conditions and the following disclaimer.  Redistributions
-in binary form must reproduce the above copyright notice, this list of
-conditions and the following disclaimer in the documentation and/or
-other materials provided with the distribution.  Neither the name of
-the Intel Corporation nor the names of its contributors may be used to
-endorse or promote products derived from this software without
-specific prior written permission.
- 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE INTEL OR
-ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-END_LEGAL */
-//
-// @ORIGINAL_AUTHOR: Artur Klauser
-//
-
-/*! @file
- *  This file contains an ISA-portable PIN tool for functional simulation of
- *  instruction+data TLB+cache hieraries
- */
-
 #include <iostream>
 
 #include "pin.H"
@@ -55,8 +16,8 @@ std::ostream * out = &cerr;
 // --------------------------------------------------------------------------------
 static UINT32 hits = 0;         // L3 Cache hits
 static UINT32 misses = 0;       // L3 Cache misses
-UINT64 fast_forward_count = 0;     //fast forward count
-UINT64 noOfinsToexcute = 1000;
+UINT64 fast_forward_count = 0;//377000000000;     //fast forward count
+UINT64 noOfinsToexcute = 1000000000;
 UINT64 icount = 0;                    //number of dynamically executed instructions
 
 // --------------------------------------------------------------------------------
@@ -144,7 +105,7 @@ namespace ITLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
     // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
@@ -161,7 +122,7 @@ namespace DTLB
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
     // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
@@ -178,7 +139,7 @@ namespace IL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
     // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
@@ -195,9 +156,9 @@ namespace DL1
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    // typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR DL1::CACHE dl1("L1 Data Cache", DL1::cacheSize, DL1::lineSize, DL1::associativity);
 
@@ -211,8 +172,7 @@ namespace UL2
 
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
-
-    typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
     const UINT32 interval = 3;
     // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
@@ -229,9 +189,9 @@ namespace UL3
     const UINT32 max_sets = cacheSize / (lineSize * associativity);
     const UINT32 max_associativity = associativity;
 
-    //typedef CACHE_LRU_POLICY(max_sets, max_associativity, allocation) CACHE;
-    const UINT32 interval = 3;
-    typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
+    typedef CACHE_ROUND_ROBIN(max_sets, max_associativity, allocation) CACHE;
+    const UINT32 interval = 15;
+    // typedef CACHE_SRRIP(max_sets, max_associativity, interval, allocation) CACHE;
 }
 LOCALVAR UL3::CACHE ul3("L3 Unified Cache", UL3::cacheSize, UL3::lineSize, UL3::associativity);
 

@@ -47,6 +47,7 @@ END_LEGAL */
 typedef UINT64 CACHE_STATS; // type of cache hit/miss counters
 
 #include <sstream>
+#include <iostream>
 
 /*! RMR (rodric@gmail.com) 
  *   - temporary work around because decstr()
@@ -217,7 +218,10 @@ class LRU_POLICY
     {
         ASSERTX(associativity <= MAX_ASSOCIATIVITY);
         _nextReplaceIndex = _tagsFirstIndex;
-
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            _tags[index] = CACHE_TAG(0);
+        }
         for (UINT32 index = _tagsFirstIndex; index < _tagsLastIndex; index++)
         {
             counter[index] = _tagsLastIndex;
@@ -239,10 +243,7 @@ class LRU_POLICY
             }
             else
             {
-                if (counter[index] != _tagsLastIndex)
-                {
                     counter[index]++;
-                }
             }
         }
         return result;
@@ -263,7 +264,7 @@ class LRU_POLICY
         // Find the least recently used index that is to be replaced
         for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
-            if (counter[index] > counter[_nextReplaceIndex]) _nextReplaceIndex = index;
+            if (counter[index] > _tagsLastIndex) _nextReplaceIndex = index;
         }
 
         // g++ -O3 too dumb to do CSE on following lines?!
@@ -277,7 +278,7 @@ class LRU_POLICY
 //-------------------------------------------------------------------------------------------
 // Cache with SRRIP
 //-------------------------------------------------------------------------------------------
-template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 3>
+template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 7>
 class SRRIP
 {
   private:
@@ -296,6 +297,10 @@ class SRRIP
         for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
             predictor[index] = INTERVAL;
+        }
+        for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
+        {
+            _tags[index] = CACHE_TAG(0);
         }
     }
 
@@ -325,7 +330,7 @@ class SRRIP
     
     VOID Replace(CACHE_TAG tag)
     {
-        UINT32 distantIndex = 3;
+        UINT32 distantIndex = INTERVAL;
         bool found = false;
         _nextReplaceIndex = _tagsFirstIndex;
         // Find the srrip index that is to be replaced
@@ -337,6 +342,7 @@ class SRRIP
                 {
                     _nextReplaceIndex = index;
                     found = true;
+                    break;
                 }
             }
             if (!found)
@@ -349,7 +355,7 @@ class SRRIP
         }
         for (UINT32 index = _tagsFirstIndex; index <= _tagsLastIndex; index++)
         {
-            if (index != _nextReplaceIndex)
+            if (index != _nextReplaceIndex && predictor[index] < distantIndex)
             {
                 predictor[index]++;
             }
@@ -357,7 +363,7 @@ class SRRIP
         // g++ -O3 too dumb to do CSE on following lines?!
         const UINT32 index = _nextReplaceIndex;
         _tags[index] = tag;
-        predictor[index] = 2;
+        predictor[index] = (INTERVAL+1)/2;
     }
 };
 
