@@ -278,7 +278,7 @@ class LRU_POLICY
 //-------------------------------------------------------------------------------------------
 // Cache with SRRIP
 //-------------------------------------------------------------------------------------------
-template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 7>
+template <UINT32 MAX_ASSOCIATIVITY = 4, UINT32 INTERVAL = 15>
 class SRRIP
 {
   private:
