@@ -218,7 +218,6 @@ LOCALFUN VOID Ul3Access(ADDRINT addr, UINT32 size,ADDRINT pc, CACHE_BASE::ACCESS
     BOOL ul3Hit = FALSE;
     ul3Hit = ul3.Access(addr, size,accessType);
     // ul3Hit = ul3.Access(addr, size,pc,accessType);
-    // no. of cache hits/misses
     acc++;  
     if ( ! ul3Hit)
     {

@@ -1,0 +1,9 @@
+Total 5 replacement policies have been implemented for LLC
+
+To run any replacement policy goto Project422.cpp
+-- on line 213 set CACHE number (CACHE{NUM}) according to typedef defined
+   just above it
+-- To run SHiP, also need to comment line 219 and uncomment line 220.
+-- Build the project
+-- Run it as any pintool source with -f paramenter representing fast
+   forward count and -o to provide file where stats can be seen.
